@@ -1,7 +1,34 @@
 <?php
 session_start();
-$con=mysqli_connect("localhost","root","","myhmsdb");
+$con = mysqli_connect("localhost","root","","myhmsdb");
 
+// -----------------------------------------
+// RATE LIMITING FOR DOCTOR LOGIN
+// 3 attempts, 60-second lockout
+// -----------------------------------------
+if (!isset($_SESSION['docLoginAttempts'])) {
+    $_SESSION['docLoginAttempts'] = 0;
+    $_SESSION['docTimeOut'] = 0;
+}
+
+$attempt_limit   = 3;
+$lockout_seconds = 60;
+
+// Check lockout before processing login
+if ($_SESSION['docLoginAttempts'] >= $attempt_limit) {
+    $remaining = $_SESSION['docTimeOut'] - time();
+    if ($remaining > 0) {
+        die("Too many failed doctor login attempts. Try again in $remaining seconds.");
+    } else {
+        // Reset after timeout expires
+        $_SESSION['docLoginAttempts'] = 0;
+        $_SESSION['docTimeOut']      = 0;
+    }
+}
+
+// -----------------------------------------
+// DOCTOR LOGIN (existing base logic)
+// -----------------------------------------
 if (isset($_POST['docsub1'])) {
     $dname = $_POST['username3'];
     $dpass = $_POST['password3'];
@@ -13,45 +40,32 @@ if (isset($_POST['docsub1'])) {
     if ($result && mysqli_num_rows($result) === 1) {
         $row = mysqli_fetch_array($result, MYSQLI_ASSOC);
 
-        // 2) Verify password against hash
+        // 2) Verify password against hash (existing logic)
         if (password_verify($dpass, $row['password'])) {
+
+            // Reset attempts on success
+            $_SESSION['docLoginAttempts'] = 0;
+            $_SESSION['docTimeOut']       = 0;
+
             $_SESSION['dname'] = $row['username'];
             header("Location:doctor-panel.php");
             exit();
         }
     }
 
+    // FAILED LOGIN PATH (base logic + new counters)
+    $_SESSION['docLoginAttempts']++;
+
+    if ($_SESSION['docLoginAttempts'] >= $attempt_limit) {
+        $_SESSION['docTimeOut'] = time() + $lockout_seconds;
+        die("Too many failed doctor login attempts. You are locked out for $lockout_seconds seconds.");
+    }
+
     echo("<script>alert('Invalid Username or Password. Try Again!');
           window.location.href = 'index.php';</script>");
+    exit();
 }
-
-
-
-// if(isset($_POST['update_data']))  
-//   $result=mysqli_query($con,$query);
-//   if(mysqli_num_rows($result)==1)
-//   {
-//     $_SESSION['username']=$username;
-//     header("Location:admin-panel.php");
-//   }
-//   else
-//     header("Location:error2.php");
-  
-
-
-
-function display_docs()
-{
-	global $con;
-	$query="select * from doctb";
-	$result=mysqli_query($con,$query);
-	while($row=mysqli_fetch_array($result))
-	{
-		$name=$row['name'];
-		# echo'<option value="" disabled selected>Select Doctor</option>';
-		echo '<option value="'.$name.'">'.$name.'</option>';
-	}
-}
+?>
 
 // if(isset($_POST['doc_sub']))
 // {
